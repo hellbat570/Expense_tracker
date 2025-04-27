@@ -1,52 +1,57 @@
 """
-Runs once: parses an SMS backup XML and uploads the extracted
-transactions list to Firebase under /transactions.
+One-shot uploader:
+1. Reads an SMS-backup XML file.
+2. Extracts UPI / debit messages (amount, date, sender, full text).
+3. Writes the list to Firebase under /transactions.
 
-✓ Reads the service-account JSON from st.secrets["FIREBASE_ACCOUNT"]
-  (so it can also run inside Streamlit Cloud or a GitHub Action)
+Can be run locally, in Replit, or in a GitHub Action.
+Requires the Firebase service-account JSON in environment variable
+FIREBASE_ACCOUNT (via st.secrets when run in Streamlit Cloud).
 """
 
 import json, re, xmltodict, streamlit as st
 import firebase_admin
-from firebase_admin import credentials, db
+from firebase_admin import credentials, db, get_app, initialize_app
 
-# ── Config ─────────────────────────────────────────────────
-XML_FILE = "sms_backup.xml"   # put your latest export here
+# ── Config ───────────────────────────────────────────────────────────
+XML_FILE = "sms_backup.xml"   # supply the latest export here
 
+# ── Firebase init (same thread-safe pattern) ─────────────────────────
 service_account_info = json.loads(st.secrets["FIREBASE_ACCOUNT"])
 
-if not firebase_admin._apps:
+try:
+    app = get_app()
+except ValueError:
     cred = credentials.Certificate(service_account_info)
-    firebase_admin.initialize_app(
+    app = initialize_app(
         cred,
         {"databaseURL": "https://expense-tracker-74700-default-rtdb.firebaseio.com/"},
     )
 
-# ── Parse XML ──────────────────────────────────────────────
+# ── Parse XML ────────────────────────────────────────────────────────
 with open(XML_FILE, "r", encoding="utf-8") as f:
     sms_dict = xmltodict.parse(f.read())
 
-msgs         = sms_dict.get("smses", {}).get("sms", [])
 keywords     = ["debited", "credited", "upi", "payment", "txn", "transaction"]
 transactions = []
 
-for m in msgs:
-    body = m.get("@body", "")
+for sms in sms_dict.get("smses", {}).get("sms", []):
+    body = sms.get("@body", "")
     if any(k in body.lower() for k in keywords):
-        amt = re.search(r"INR[\s₹]?([\d,]+\.\d{2})", body)
-        if amt:
+        m = re.search(r"INR[\s₹]?([\d,]+\.\d{2})", body)
+        if m:
             transactions.append(
                 {
-                    "date":    m.get("@date", ""),
-                    "amount":  float(amt.group(1).replace(",", "")),
-                    "address": m.get("@address", ""),
+                    "date":    sms.get("@date", ""),
+                    "amount":  float(m.group(1).replace(",", "")),
+                    "address": sms.get("@address", ""),
                     "message": body,
                 }
             )
 
 print(f"Parsed {len(transactions)} transaction(s).")
 
-# ── Upload ─────────────────────────────────────────────────
+# ── Upload to Firebase ───────────────────────────────────────────────
 if transactions:
     db.reference("transactions").set(transactions)
     print("✅  Uploaded to Firebase.")
