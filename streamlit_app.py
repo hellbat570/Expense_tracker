@@ -2,24 +2,25 @@
 Streamlit dashboard that reads /transactions from Firebase
 and displays a summary + table.
 
-Requires the service-account JSON in the environment variable
-FIREBASE_ACCOUNT (add this in Streamlit Cloud → Secrets).
+✓ Reads the service-account JSON from st.secrets["FIREBASE_ACCOUNT"]
+✓ Works on Streamlit Community Cloud.
 """
 
-import os, json
+import json
 import streamlit as st
 import pandas as pd
 import firebase_admin
 from firebase_admin import credentials, db
 
 # ── Firebase init ──────────────────────────────────────────
-service_account_info = json.loads(os.environ["FIREBASE_ACCOUNT"])
+service_account_info = json.loads(st.secrets["FIREBASE_ACCOUNT"])
 
-cred = credentials.Certificate(service_account_info)
-firebase_admin.initialize_app(
-    cred,
-    {"databaseURL": "https://expense-tracker-74700-default-rtdb.firebaseio.com/"},
-)
+if not firebase_admin._apps:      # prevents double-init on hot-reload
+    cred = credentials.Certificate(service_account_info)
+    firebase_admin.initialize_app(
+        cred,
+        {"databaseURL": "https://expense-tracker-74700-default-rtdb.firebaseio.com/"},
+    )
 
 # ── Fetch data ─────────────────────────────────────────────
 data = db.reference("transactions").get()
