@@ -1,31 +1,27 @@
 """
-Streamlit dashboard that reads /transactions from Firebase
-and displays a summary + table.
-
-✓ Reads the service-account JSON from st.secrets["FIREBASE_ACCOUNT"]
-✓ Works on Streamlit Community Cloud.
+Streamlit dashboard – reads /transactions from Firebase and shows
+totals + a table.  Expects the Firebase service-account JSON in the
+Streamlit Secrets panel under the key FIREBASE_ACCOUNT.
 """
 
-import json
-import streamlit as st
-import pandas as pd
+import json, streamlit as st, pandas as pd
 import firebase_admin
-from firebase_admin import credentials, db
+from firebase_admin import credentials, db, get_app, initialize_app
 
-# ── Firebase init ──────────────────────────────────────────
+# ── Firebase initialisation (thread-safe) ────────────────────────────
 service_account_info = json.loads(st.secrets["FIREBASE_ACCOUNT"])
 
-if not firebase_admin._apps:      # prevents double-init on hot-reload
+try:
+    app = get_app()                       # reuse if one already exists
+except ValueError:                        # else create it
     cred = credentials.Certificate(service_account_info)
-    firebase_admin.initialize_app(
+    app = initialize_app(
         cred,
         {"databaseURL": "https://expense-tracker-74700-default-rtdb.firebaseio.com/"},
     )
 
-# ── Fetch data ─────────────────────────────────────────────
+# ── Fetch data and build UI ──────────────────────────────────────────
 data = db.reference("transactions").get()
-
-# ── Streamlit UI ───────────────────────────────────────────
 st.title("📊  SMS-Expense Dashboard")
 
 if data:
@@ -34,4 +30,4 @@ if data:
     st.metric("Total Spent (₹)", f"{df['amount'].sum():,.2f}")
     st.dataframe(df)
 else:
-    st.info("No transactions found. Run the uploader script first.")
+    st.info("No transactions found – run the uploader.")
