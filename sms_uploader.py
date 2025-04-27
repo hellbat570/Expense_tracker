@@ -1,24 +1,26 @@
 """
-Reads an SMS backup XML, extracts INR amounts, and writes the
-resulting list to Firebase under /transactions.
+Runs once: parses an SMS backup XML and uploads the extracted
+transactions list to Firebase under /transactions.
 
-Run this locally or in a GitHub Action whenever you have a new
-sms_backup.xml file.  FIREBASE_ACCOUNT secret must be set.
+✓ Reads the service-account JSON from st.secrets["FIREBASE_ACCOUNT"]
+  (so it can also run inside Streamlit Cloud or a GitHub Action)
 """
 
-import os, json, re, xmltodict
+import json, re, xmltodict, streamlit as st
 import firebase_admin
 from firebase_admin import credentials, db
 
 # ── Config ─────────────────────────────────────────────────
-XML_FILE = "sms_backup.xml"  # rename to your latest backup file
+XML_FILE = "sms_backup.xml"   # put your latest export here
 
-service_account_info = json.loads(os.environ["FIREBASE_ACCOUNT"])
-cred = credentials.Certificate(service_account_info)
-firebase_admin.initialize_app(
-    cred,
-    {"databaseURL": "https://expense-tracker-74700-default-rtdb.firebaseio.com/"},
-)
+service_account_info = json.loads(st.secrets["FIREBASE_ACCOUNT"])
+
+if not firebase_admin._apps:
+    cred = credentials.Certificate(service_account_info)
+    firebase_admin.initialize_app(
+        cred,
+        {"databaseURL": "https://expense-tracker-74700-default-rtdb.firebaseio.com/"},
+    )
 
 # ── Parse XML ──────────────────────────────────────────────
 with open(XML_FILE, "r", encoding="utf-8") as f:
